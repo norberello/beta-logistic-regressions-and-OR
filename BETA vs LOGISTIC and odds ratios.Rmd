@@ -1,0 +1,237 @@
+---
+title: "BETA regression, LOGISTIC regression, and OR (odds ratios)"
+author: "Norberto Asensio"
+date: "2023-06-10"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r klippy, echo=FALSE, include=TRUE}
+klippy::klippy()
+```
+
+## Libraries
+
+```{r}
+library(ggplot2)#grammar of plots
+library(betareg)#to perform a beta regression
+```
+
+<a href="https://imgflip.com/i/7oyswj"><img src="https://i.imgflip.com/7oyswj.jpg" title="Monopozine wont let you down, make your own luck"/></a><div><a href="https://imgflip.com/memegenerator">from Imgflip Meme Generator</a></div>
+
+## Research context
+
+We are conducting a study on the effects of a peculiar substance called 'Monopozine' found in everyday food items on the performance of individuals playing the popular board game Monopoly. Monopozine is a fictional compound known for its supposed ability to enhance strategic thinking and luck in competitive settings (of course I am making this up for pedagogical reasons). In this study, we recruit a group of Monopoly players and ask them to keep track of their game results over the course of a week. Each participant records the number of wins and losses they experience while playing Monopoly, as well as their weekly consumption of Monopozine. 
+
+## Collected data
+
+This is the dataset that we have collected for 12 persons (I enter the results manually in the form of variable vectors and form a dataset):
+
+```{r}
+dose <- c(.0594,.1200,.1259,.1413,.1500,.1588,.1778,.1995,.2239,.2512,.2818,.3462)
+win <- c(1,1,1,1,1,4,4,6,4,12,13,33)
+lose <- c(28,19,13,11,9,8,6,4,3,1,3,2)
+my.data <- data.frame(dose,win,lose)
+my.data
+```
+
+The dataset includes information on the number of wins and losses for each participant, represented by the variables 'win' and 'lose' respectively. The 'dose' variable indicates the estimated quantity of Monopozine consumed by each participant through their regular diet in miligrams (ml). The objective is to investigate the relationship between the weekly consumption of Monopozine and the proportion of wins in Monopoly games. By analyzing this relationship, we aim to uncover whether the intake of Monopozine-rich foods may have any impact on players' success rates in the game. 
+
+There are two ways of doing this, we can use a regression a) with a beta distribution or b) with a binomial distribution, but first let´s understand what proportions are and particularly what odds ratios (OR) are.
+
+## Understading proportions and odds ratios (OR)
+
+Let´s add to the dataset the proportion of wins (`prop.win`) and also the ratio of wins to loses (`ratio.wl`)
+
+```{r}
+my.data$prop.win <- win/(lose+win)
+my.data$ratio.wl <- win/lose
+mean(my.data$prop.win)
+mean(my.data$ratio.wl)
+```
+
+On average, participants in the game of Monopoly had a win rate of 41%. This means that, out of all the games played, they won around 41% of the time. This is equivalent to saying that the ratio of wins to losses (ratio.wl) is 3.1, as a ratio of 3.1 implies that for every three wins, there is approximately one loss, or we can say that the odds of winning are 3 to 1, indicating a higher probability of winning the game according to observations. There are two ways of expressing the same.
+
+Look at the relationship between proportions and the so called odds ratios (ORs):
+
+```{r}
+ggplot(my.data,aes(prop.win,ratio.wl))+geom_point()
+```
+
+Whereas proportions can range between 0 and 1, odds ratios (ORs) represent the ratio of favorable outcomes to unfavorable outcomes and can range from 0 to infinity. ORs provide a measure of the relative likelihood of an event occurring. A value of 1 indicates equal odds, values greater than 1 indicate higher odds of the event occurring, and values less than 1 indicate lower odds. Using the log of odds ratios (logOR) provides a symmetric scale where 0 represents equal probability. This transformation facilitates interpretation, satisfies modeling assumptions, and enables straightforward comparison and analysis of the effects:
+
+```{r}
+ggplot(my.data,aes(prop.win,log(ratio.wl)))+geom_point()+ 
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgreen")+ 
+  geom_vline(xintercept=0.5, linetype="dashed", color = "darkgreen")
+```
+
+When working with proportions as an outcome variable (or dependent variable) in a model, analysis gets tricky if you use standard models like ordinary least square regression:
+
+```{r}
+ggplot(my.data,aes(dose,prop.win))+geom_point()+
+  geom_smooth(method="lm")+ 
+  geom_hline(yintercept=1, linetype="dashed", color = "red")+ 
+  geom_hline(yintercept=0, linetype="dashed", color = "red")
+```
+
+Observe how the fitted line predicts theoretically impossible negative values and also values over 1. Let´s check at the resulting linear regression ot understand it better:
+
+```{r}
+linear.model <- lm(prop.win~dose,data=my.data)
+summary(linear.model)
+```
+
+Thus:
+
+$$
+proportion.wins=-0.36+4.15*dose
+$$
+
+Notice how the intercept is negative, so for a dose of 0 the proportion of wins would be -36%. Let´s predict what would be the proportion of wins for a 0.5 and 1 ml dose of monopozine (let´s add 0 as well just to check that it is the intercept -0.36):
+
+```{r}
+predict.data <- data.frame(dose=c(0,.5,1))
+predict(linear.model,newdata=predict.data)
+```
+
+With .5 ml, it is predicted that someone would win Monopoly with a probability of 168% and with one ml, with a probability 374% of the times.
+
+Something isn´t right, isn´t it?
+
+
+## a) Beta regression
+
+Beta regression is a regression modeling technique specifically designed for response variables that are continuous and bounded within the interval (0, 1). It is particularly useful when the response variable represents proportions, rates, or percentages.
+
+In our particular case, the linear predictor (η) is given by:
+
+$$
+η = β₀ + β₁ * dose + ε
+$$
+
+Here, β₀ is the intercept and β₁ is the coefficient associated with the predictor variable (dose), and ε is the error term.
+
+To ensure that the predicted values fall within the interval (0, 1), we apply the logit link function to the linear predictor η. The logit link function is defined as:
+
+$$
+f(η) = log(η / (1 - η))
+$$
+
+By substituting the linear predictor into the link function, we obtain:
+
+$$
+log(p / (1 - p)) = β₀ + β₁ * dose
+$$
+
+In this equation, p represents the estimated probability of winning (proportion of wins), and 1 - p equals the proportion of losses.
+
+Therefore:
+
+$$
+p(winning) = 1 / (1 + exp(-(β₀ + β₁ * dose)))
+$$
+The `betareg` library offers an easy way of fitting a beta regression in R for our problem:
+
+```{r}
+model.beta <- betareg(prop.win ~ dose, data=my.data)#fits a beta regression
+summary(model.beta)#summary of the fitted regression
+```
+
+**Methods**: A beta regression analysis was conducted to investigate the association between the dose variable and the proportion of wins in the Monopoly game. The beta regression model employed the logit link function to model the relationship. The coefficients and standard errors of the dose variable were estimated, allowing for the interpretation of the effect of dose on the mean proportion of wins.
+
+**Results**: The beta regression analysis revealed a significant effect of dose on the proportion of wins in the Monopoly game (β = 26.57, p < 0.001). As the dose increases, the expected mean proportion of wins also increases, indicating a positive relationship between dose and winning probability. The model had pseudo R-squared of 0.8924 indicating a good fit of the data.
+
+Check now how the model predicts previously wrong predicted values of .5 ml and 1 ml of Monopozine dose by a linear regression:
+
+```{r}
+predict.data <- data.frame(dose=c(.5,1))
+predict(model.beta,newdata=predict.data)
+```
+
+Based on the beta regression model, when the dose values are 0.5 and 1, the predicted values for the proportion of wins in the Monopoly game are approximately 0.99 and 1, respectively. Aha! This makes more sense!! Let´s have a plot of this beta regression line:
+
+
+```{r}
+my.data$predicted <- predict(model.beta, newdata = my.data, type = "response")# Generate predicted values, same as the dataset in this case, but could be any range
+ggplot(my.data, aes(dose, prop.win)) +
+  geom_point() +
+  geom_line(aes(y = predicted), color = "blue") +
+  labs(x = "dose", y = "proportion of wins")# Plot the relationship with the beta regression line
+```
+
+## b) Logistic regression
+
+The logistic regression equation can be written as:
+$$
+ln(OR) = β0 + β1 * dose + ε
+$$
+where ln(OR) represents the natural logarithm of the odds ratio (frequency of wins/frequency of loses, which is actually the same as pthe roportion of wins/proportion of losses), β0 is the intercept, β1 is the coefficient for the dose variable, dose represents the dose value, and ε represents the error term.
+
+In this case, the odds ratio (OR) is the ratio of the frequency of wins to the frequency of losses. 
+
+So the logistic regression equation for the case of dose and the odds ratio (OR) of wins to losses can be written as:
+$$
+ln(OR) = β0 + β1 * dose + ε
+$$
+where ln(OR) represents the natural logarithm of the odds ratio, β0 is the intercept, β1 is the coefficient for the dose variable, dose represents the dose value, and ε represents the error term. 
+
+To convert the log odds ratio (log(OR)) into probabilities:
+
+$$
+p(winning) = 1 / (1 + exp(-(β₀ + β₁ * dose)))
+$$
+
+Note that the beta regression equation "log(p / (1 - p)) = β₀ + β₁ * dose" and the logistic regression equation "log(OR) = β₀ + β₁ * dose" the same in structure and share many similarities. The main difference lies in the assumptions and the distribution of the response variable. In logistic regression, the response variable follows a binomial distribution and represents the probability of success (win) out of the total number of trials (wins + losses). On the other hand, in beta regression, the response variable follows a beta distribution and represents a continuous proportion ranging between 0 and 1. In any case, both will reflect the same result as you will see.
+
+The odds ratio is calculated based on the frequencies of wins and losses using the `cbind(wins,loses)` function and then we will use the command `glm()` (Generalized Linear Mondel) indicating the binomial distribution by adding `family = binomial` to the formula
+
+```{r}
+response <- cbind(my.data$win, my.data$lose)# Create the response variable matrix with wins and loses
+model_logistic <- glm(response ~ dose, data = my.data, family = binomial)# Fit the logistic regression model
+summary(model_logistic)# Print the model summary
+```
+
+**Methods**: A logistic regression analysis was performed to examine the relationship between the dose variable and the odds of winning in the Monopoly game. The dose variable was included as a predictor, and the odds ratio was used as the outcome measure. The logistic regression model estimated the coefficients and significance levels of the dose variable, providing insights into the impact of dose on the probability of winning.
+
+**Results**: The logistic regression analysis revealed a significant effect of dose on the odds of winning in the Monopoly game. The coefficient for the dose variable is 25.2962 (p < 0.001), indicating that for each unit increase in dose, the odds of winning increase. The model achieved a good fit to the data, as evidenced by a relatively low residual deviance of 7.8996 on 10 degrees of freedom.
+
+Let´s have a plot:
+
+```{r}
+# Generate predicted values
+my.data$predicted <- predict(model_logistic, newdata = my.data, type = "response")
+# Plot the relationship with the beta regression line
+ggplot(my.data, aes(dose, prop.win)) +
+  geom_point() +
+  geom_line(aes(y = predicted), color = "blue") +
+  labs(x = "dose", y = "proportion of wins")
+```
+
+Based on the model let´s have a prediction for a dise .5 and 1ml:
+
+```{r}
+predict.data <- data.frame(dose=c(.5,1))
+predict(model_logistic,newdata=predict.data)
+```
+
+To transform log OR to probabilities, we can:
+
+```{r}
+exp(predict(model_logistic,newdata=predict.data)) / (1 + exp(predict(model_logistic,newdata=predict.data)))
+```
+
+R has also the `plogis()`command for this purpose:
+
+```{r}
+plogis(predict(model_logistic,newdata=predict.data))
+```
+
+## To know more
+
+https://rcompanion.org/handbook/J_02.html
+<p>
+https://stats.stackexchange.com/questions/496050/why-is-betareg-giving-invalid-dependent-variable-error/496055<p>
+https://www.andrewheiss.com/blog/2021/11/08/beta-regression-guide/
